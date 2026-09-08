@@ -1,0 +1,73 @@
+# Development setup for video-feed.
+# https://mise.jdx.dev/
+
+[tools]
+bun = "latest"      # builds the binary; the only build dependency
+uv = "latest"       # runs the transcription sidecar at runtime
+"pipx:yt-dlp" = "latest"
+
+# ffmpeg is a system package -- mise does not manage it.
+
+# `dev` and `undev` honour VID_INSTALL_DIR, the same variable scripts/install.sh
+# uses; both default to ~/.local/bin.
+
+[tasks.build]
+description = "Compile dist/vid for this machine"
+run = """
+bun install
+bun run build
+"""
+
+[tasks.check]
+description = "Typecheck and test"
+run = """
+bun run embed      # src/asr-embedded.ts is generated and gitignored
+bun run typecheck
+bun test
+"""
+
+[tasks.dev]
+description = "Build and symlink dist/vid onto PATH (dev mode)"
+depends = ["build"]
+run = """
+set -eu   # mise runs tasks with sh; no pipefail here
+dir="${VID_INSTALL_DIR:-$HOME/.local/bin}"
+target="$dir/vid"
+mkdir -p "$dir"
+
+# Say what is being replaced. A released install is a real file; leaving that
+# in place silently is how you end up debugging a binary you did not build.
+if [ -L "$target" ]; then
+  echo "  replacing existing symlink -> $(readlink "$target")"
+elif [ -e "$target" ]; then
+  echo "  replacing installed release ($("$target" --version 2>/dev/null || echo 'unknown'))"
+fi
+
+ln -sfn "$PWD/dist/vid" "$target"
+echo "  $target -> $PWD/dist/vid"
+echo "  vid $("$target" --version)"
+
+case ":$PATH:" in
+  *":$dir:"*) ;;
+  *) echo "  note: $dir is not on PATH" ;;
+esac
+
+echo "  rebuild with: mise run build   (the symlink picks it up)"
+"""
+
+[tasks.undev]
+description = "Drop the dev symlink and reinstall the published release"
+run = """
+set -eu   # mise runs tasks with sh; no pipefail here
+dir="${VID_INSTALL_DIR:-$HOME/.local/bin}"
+target="$dir/vid"
+
+if [ -L "$target" ]; then
+  rm -v "$target"
+elif [ -e "$target" ]; then
+  echo "  $target is not a symlink; leaving it alone"
+  exit 0
+fi
+
+VID_INSTALL_DIR="$dir" bash scripts/install.sh
+"""
