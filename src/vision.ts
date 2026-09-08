@@ -10,12 +10,7 @@
  * model handed a transcript rewrites more than it reports, quietly. Edits are
  * auditable, cheap to review, and can be rejected one at a time.
  */
-import {
-  DEFAULT_VIDEO_MODEL,
-  getClient,
-  jsonResponse,
-  uploadAndWait,
-} from "./gemini";
+import { getClient, jsonResponse, uploadAndWait, videoModel } from "./gemini";
 import {
   CORRECTIONS,
   SCREEN,
@@ -98,7 +93,7 @@ export async function* watch(
   opts: VisionOptions = {},
 ): AsyncGenerator<Event, VisionResult> {
   const { chunkS = 600, fps = 1, hiRes = true, force = false } = opts;
-  const model = opts.model ?? DEFAULT_VIDEO_MODEL;
+  const model = opts.model ?? (await videoModel());
 
   if ((await wd.has(SCREEN)) && (await wd.has(CORRECTIONS)) && !force) {
     yield { type: "done", message: "already watched" };

@@ -7,40 +7,25 @@
  */
 import { GoogleGenAI } from "@google/genai";
 
-import { run } from "./proc";
+import { loadConfig, resolveApiKey } from "./config";
 
-export const DEFAULT_VIDEO_MODEL = process.env.VIDEO_FEED_VIDEO_MODEL || "gemini-2.5-pro";
-export const DEFAULT_TRANSCRIBE_MODEL =
-  process.env.VIDEO_FEED_TRANSCRIBE_MODEL || "gemini-2.5-pro";
+/** Model IDs come from config (or env); `vid models` shows what the key can see. */
+export async function videoModel(): Promise<string> {
+  return (await loadConfig()).config.gemini.videoModel;
+}
 
-/** 1Password reference used when no key is in the environment. */
-const OP_REF = process.env.VIDEO_FEED_OP_REF || "op://Homelab/Gemini - video-feed/credential";
-
-let cachedKey: string | undefined;
-
-/** The key is returned, never logged. */
-export async function apiKey(): Promise<string> {
-  if (cachedKey) return cachedKey;
-
-  const fromEnv = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  if (fromEnv) return (cachedKey = fromEnv.trim());
-
-  const r = await run(["op", "read", OP_REF]);
-  if (r.code !== 0) {
-    throw new Error(
-      `No GEMINI_API_KEY set, and reading it from 1Password failed (${OP_REF}).\n` +
-        `op said: ${r.stderr.trim().slice(0, 300)}\n` +
-        "Set GEMINI_API_KEY, or point VIDEO_FEED_OP_REF at the right item.",
-    );
-  }
-  return (cachedKey = r.stdout.trim());
+export async function transcribeModel(): Promise<string> {
+  return (await loadConfig()).config.gemini.transcribeModel;
 }
 
 let client: GoogleGenAI | undefined;
 
 /** Lazy, so commands that never touch Gemini never need a key. */
 export async function getClient(): Promise<GoogleGenAI> {
-  if (!client) client = new GoogleGenAI({ apiKey: await apiKey() });
+  if (!client) {
+    const { key } = await resolveApiKey();
+    client = new GoogleGenAI({ apiKey: key });
+  }
   return client;
 }
 

@@ -75,3 +75,17 @@ export async function* runStreaming(
   const [stdout, code] = await Promise.all([stdoutPromise, p.exited]);
   return { code, stdout, stderr: stderrLines.join("\n") };
 }
+
+/**
+ * Run a command that prints a secret, capturing only stdout.
+ *
+ * stdin and stderr are inherited so an interactive credential helper can
+ * actually prompt -- `op` without a service-account token, a passphrase for
+ * `pass`, a biometric check. Piping those would hang the CLI with no visible
+ * reason. Only stdout is captured, so the secret never reaches the terminal.
+ */
+export async function runForSecret(cmd: string[]): Promise<{ code: number; stdout: string }> {
+  const p = Bun.spawn(cmd, { stdin: "inherit", stdout: "pipe", stderr: "inherit" });
+  const [stdout, code] = await Promise.all([new Response(p.stdout).text(), p.exited]);
+  return { code, stdout };
+}

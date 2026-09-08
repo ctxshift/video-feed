@@ -76,21 +76,59 @@ on-screen text, which is usually the point of the pass.
 
 ## Configuration
 
-| Variable | Purpose |
-|---|---|
-| `GEMINI_API_KEY` | API key. Falls back to 1Password. |
-| `VIDEO_FEED_OP_REF` | 1Password ref, default `op://Homelab/Gemini - video-feed/credential` |
-| `VIDEO_FEED_VIDEO_MODEL` | Vision model override |
-| `VIDEO_FEED_TRANSCRIBE_MODEL` | Gemini transcription model override |
-| `XDG_DATA_HOME` | Where work dirs live |
+```bash
+vid config --init   # writes ~/.config/video-feed/config.toml, mode 600
+vid config          # shows resolved settings and where each came from
+```
 
-Model IDs move faster than this code will, so both are overridable and
-`vid models` lists what your key can actually see.
+Settings resolve **environment > config file > built-in default**.
+
+### The API key
+
+Preferred — store a *command*, not the secret:
+
+```toml
+[gemini]
+api_key_command = "op read op://Homelab/Gemini - video-feed/credential"
+```
+
+Nothing sensitive lands on disk, and any secret manager works: `op`, `pass`,
+`gopass`, `security` on macOS, `vault`. The command inherits stdin and stderr, so
+one that needs to prompt or unlock can do so — a piped credential helper would
+otherwise hang with nothing on screen.
+
+For 1Password specifically: a service account needs `OP_SERVICE_ACCOUNT_TOKEN`
+in the environment and never prompts; otherwise `op signin` first.
+
+Two alternatives:
+
+```toml
+[gemini]
+api_key = "..."     # plain; `vid config` warns if the file is readable by others
+```
+
+```bash
+export GEMINI_API_KEY=...   # highest precedence — CI, one-off runs
+```
+
+`vid config` reports which source supplied the key. It never prints the key.
+
+### Other settings
+
+| | |
+|---|---|
+| `[gemini] video_model`, `transcribe_model` | model IDs — `vid models` lists real ones |
+| `[whisper] model`, `device`, `hotwords` | local ASR |
+| `[vision] fps`, `chunk_s`, `high_res` | cost/detail trade-offs |
+| `[paths] data_dir` | where work dirs live |
+
+Model IDs change faster than this code will, which is why they are configuration
+rather than constants.
 
 ## Layout
 
 ```
-src/          TypeScript: cli, stages, Ink UI
+src/          TypeScript: cli, config, stages, Ink UI
 asr/          the Python transcription sidecar (source of truth)
 scripts/      embeds the sidecar into the binary at build time
 stubs/        resolves Ink's dev-only devtools import to nothing

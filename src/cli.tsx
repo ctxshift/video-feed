@@ -5,11 +5,21 @@
  * Each stage writes one JSON artifact into a work dir and skips itself if that
  * artifact already exists, so a failure costs one step rather than the run.
  */
+import { chmod, mkdir } from "node:fs/promises";
+
 import { Command } from "commander";
 
 import { DEFAULT_HOTWORDS, transcribe } from "./asr";
 import { captionTracks, fetchVideo, probe } from "./fetch";
 import { getClient, listModels } from "./gemini";
+import {
+  STARTER,
+  configDir,
+  configIsExposed,
+  configPath,
+  loadConfig,
+  resolveApiKey,
+} from "./config";
 import { render as renderDoc } from "./render";
 import { runPipeline, type Stage } from "./ui";
 import {
@@ -223,6 +233,59 @@ program
       } else {
         process.stdout.write(text);
       }
+    } catch (e) {
+      die(e);
+    }
+  });
+
+program
+  .command("config")
+  .description("Show resolved settings and where each came from.")
+  .option("--init", "Write a starter config file.")
+  .option("--path", "Print the config file path and exit.")
+  .action(async (o: any) => {
+    try {
+      if (o.path) {
+        console.log(configPath());
+        return;
+      }
+
+      if (o.init) {
+        if (await Bun.file(configPath()).exists()) {
+          throw new Error(`${configPath()} already exists — edit it, or delete it first`);
+        }
+        await mkdir(configDir(), { recursive: true });
+        await Bun.write(configPath(), STARTER);
+        await chmod(configPath(), 0o600);
+        console.log(`wrote ${configPath()}`);
+        return;
+      }
+
+      const { config } = await loadConfig();
+      const exists = await Bun.file(configPath()).exists();
+      console.log(`config file : ${configPath()}${exists ? "" : "  (not present — using defaults)"}`);
+
+      // The key itself is never printed; only where it was found.
+      let keyLine: string;
+      try {
+        const r = await resolveApiKey();
+        const shown = { env: `environment (${r.detail})`, command: `command: ${r.detail}`,
+                        config: `config file (${r.detail})`, default: "default", unset: "unset" }[r.origin];
+        keyLine = `set — from ${shown}`;
+        if (r.origin === "config" && (await configIsExposed())) {
+          keyLine += "  [readable by others: chmod 600]";
+        }
+      } catch (e) {
+        keyLine = `NOT SET — ${e instanceof Error ? e.message.split("\n")[0] : e}`;
+      }
+
+      console.log(`gemini key  : ${keyLine}`);
+      console.log(`video model : ${config.gemini.videoModel}`);
+      console.log(`transcribe  : ${config.gemini.transcribeModel}`);
+      console.log(`whisper     : ${config.whisper.model} on ${config.whisper.device}`);
+      console.log(`vision      : fps ${config.vision.fps}, chunk ${config.vision.chunkS}s, ` +
+                  `${config.vision.highRes ? "high" : "low"} res`);
+      if (!exists) console.log(`\nWrite a starter config with:  vid config --init`);
     } catch (e) {
       die(e);
     }

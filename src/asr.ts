@@ -125,8 +125,8 @@ async function* geminiTranscribe(
   opts: AsrOptions,
   hotwords: string,
 ): AsyncGenerator<Event, Transcript> {
-  const { getClient, jsonResponse, uploadAndWait, DEFAULT_TRANSCRIBE_MODEL } = await import("./gemini");
-  const model = opts.model ?? DEFAULT_TRANSCRIBE_MODEL;
+  const { getClient, jsonResponse, uploadAndWait, transcribeModel } = await import("./gemini");
+  const model = opts.model ?? (await transcribeModel());
   const client = await getClient();
 
   yield { type: "status", message: "uploading audio" };
