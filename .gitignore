@@ -1,0 +1,10 @@
+node_modules/
+dist/
+src/asr-embedded.ts
+
+# Work artifacts, if a work dir is ever pointed here
+work/
+*.mp4
+*.m4a
+*.webm
+*.vtt
