@@ -1,6 +1,6 @@
 {
   "name": "video-feed",
-  "description": "Accurate video transcripts: verbatim speech from local Whisper, corrected against on-screen text by a vision pass. Ships the `vid` CLI plus skills for setup, auth and use.",
+  "description": "Accurate video transcripts: verbatim speech from local Whisper, corrected against on-screen text by a vision pass. Installs the `vid` CLI and ships skills for setup, auth and use.",
   "version": "0.1.0",
   "author": {
     "name": "ctxshift",

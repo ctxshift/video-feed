@@ -29,23 +29,44 @@ anything; it answers most questions in one call.
 `vid` reports a missing tool by name with its install command, so trust the
 error rather than guessing.
 
-## Build
+## Install
+
+One binary, no runtime. The script picks the right build for the platform,
+verifies its checksum, and drops it in `~/.local/bin`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ctxshift/video-feed/main/scripts/install.sh | bash
+```
+
+`VID_INSTALL_DIR` changes where it lands, `VID_VERSION` pins a tag:
+
+```bash
+VID_INSTALL_DIR=/usr/local/bin VID_VERSION=v0.1.0 bash -c "$(curl -fsSL \
+  https://raw.githubusercontent.com/ctxshift/video-feed/main/scripts/install.sh)"
+```
+
+If the script says the directory is not on PATH, that is the whole problem --
+add it and re-run `vid config`.
+
+Builds exist for linux-x64, linux-arm64, darwin-x64, darwin-arm64 and
+windows-x64. On anything else, build from source.
+
+## Build from source
+
+Only needed to change the code, or for a platform with no published build.
+Requires [Bun](https://bun.sh); nothing else.
 
 ```bash
 git clone https://github.com/ctxshift/video-feed && cd video-feed
 bun install
 bun run build        # -> dist/vid
-```
-
-Then put it on PATH. Symlink rather than copy, so a rebuild takes effect
-without reinstalling:
-
-```bash
 ln -sfn "$PWD/dist/vid" ~/.local/bin/vid
 ```
 
+Symlink rather than copy, so a rebuild takes effect without reinstalling.
+
 The build embeds the Python sidecar into the binary, so `bun run build` must be
-re-run after editing `asr/whisper.py` — editing that file alone changes
+re-run after editing `asr/whisper.py` -- editing that file alone changes
 nothing.
 
 ## The API key

@@ -176,7 +176,7 @@ export const STARTER = `# video-feed configuration
 [gemini]
 # Preferred: a command that prints the key. Nothing sensitive is stored on disk,
 # and any secret manager works (op, pass, gopass, security, vault).
-# api_key_command = "op read op://Homelab/Gemini - video-feed/credential"
+# api_key_command = "op read op://Vault/Item/credential"
 
 # Alternative: the key itself. If you use this, run:  chmod 600 this file
 # api_key = "..."

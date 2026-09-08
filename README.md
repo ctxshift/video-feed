@@ -40,13 +40,32 @@ path instead — copy the directories there.
 
 ## Install
 
-
-One binary, three external tools:
+One binary, no runtime. The script picks the build for your platform, checks
+its sha256 and puts it in `~/.local/bin`:
 
 ```bash
-bun run build            # -> dist/vid
-uv tool install yt-dlp   # required
-# ffmpeg and uv must also be on PATH
+curl -fsSL https://raw.githubusercontent.com/ctxshift/video-feed/main/scripts/install.sh | bash
+```
+
+`VID_INSTALL_DIR` changes the destination, `VID_VERSION` pins a tag. Builds are
+published for linux-x64, linux-arm64, darwin-x64, darwin-arm64 and windows-x64.
+
+Then three external tools, none of them bundled:
+
+```bash
+uv tool install yt-dlp   # downloading
+# uv and ffmpeg must also be on PATH
+```
+
+### From source
+
+Only for changing the code, or a platform with no published build. Needs
+[Bun](https://bun.sh) and nothing else:
+
+```bash
+bun install
+bun run build                        # -> dist/vid
+ln -sfn "$PWD/dist/vid" ~/.local/bin/vid
 ```
 
 `uv` runs the transcription sidecar. The sidecar is embedded in the binary,
@@ -116,7 +135,7 @@ Preferred — store a *command*, not the secret:
 
 ```toml
 [gemini]
-api_key_command = "op read op://Homelab/Gemini - video-feed/credential"
+api_key_command = "op read op://Vault/Item/credential"
 ```
 
 Nothing sensitive lands on disk, and any secret manager works: `op`, `pass`,

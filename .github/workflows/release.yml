@@ -1,0 +1,75 @@
+# Cut a release: tag `v*` and push.
+#
+# Bun cross-compiles every target from one Linux runner, so this is a single
+# job rather than a matrix across four runners. The sidecar has to be embedded
+# before any target is built -- it is baked into the binary, not shipped beside
+# it.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and release"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      - name: Check
+        run: |
+          bun run typecheck
+          bun test
+
+      - name: Build every target
+        run: |
+          set -euo pipefail
+          bun run embed
+          mkdir -p out
+
+          build () {
+            local target="$1" name="$2"
+            echo "::group::$name"
+            bun build --compile --minify --target="$target" src/cli.tsx --outfile "out/$name"
+            echo "::endgroup::"
+          }
+
+          build bun-linux-x64      vid-linux-x64
+          build bun-linux-arm64    vid-linux-arm64
+          build bun-darwin-x64     vid-darwin-x64
+          build bun-darwin-arm64   vid-darwin-arm64
+          build bun-windows-x64    vid-windows-x64.exe
+
+          cd out && sha256sum vid-* > SHA256SUMS && cat SHA256SUMS
+
+      - name: Smoke-test the native build
+        run: |
+          chmod +x out/vid-linux-x64
+          # --version must not need a key, a GPU, or any external tool.
+          test "$(out/vid-linux-x64 --version)" = "$(node -p "require('./package.json').version")"
+          out/vid-linux-x64 --help > /dev/null
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ inputs.tag || github.ref_name }}" \
+            --title "${{ inputs.tag || github.ref_name }}" \
+            --generate-notes \
+            out/vid-* out/SHA256SUMS
