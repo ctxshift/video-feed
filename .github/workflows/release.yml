@@ -32,6 +32,11 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+        # The sidecar is generated into src/, which is gitignored, so this has
+        # to happen before anything type-checks or builds.
+      - name: Embed the transcription sidecar
+        run: bun run embed
+
       - name: Check
         run: |
           bun run typecheck
@@ -40,7 +45,6 @@ jobs:
       - name: Build every target
         run: |
           set -euo pipefail
-          bun run embed
           mkdir -p out
 
           build () {
