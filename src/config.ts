@@ -28,7 +28,7 @@ export interface Config {
 const DEFAULTS: Config = {
   // Aliases, not pinned IDs: model names rot fast, and a stale default is the
   // more likely failure. `vid models` lists what a key can actually see.
-  gemini: { videoModel: "gemini-flash-latest", transcribeModel: "gemini-3.5-transcribe" },
+  gemini: { videoModel: "gemini-flash-latest", transcribeModel: "gemini-flash-latest" },
   whisper: { model: "large-v3", device: "cuda" },
   vision: { fps: 1, chunkS: 600, highRes: true },
   paths: {},
@@ -184,7 +184,7 @@ export const STARTER = `# video-feed configuration
 # Defaults track the newest release. Pin an exact ID for reproducibility;
 # \`vid models\` lists what your key can actually see.
 # video_model = "gemini-flash-latest"          # or gemini-pro-latest for hard material
-# transcribe_model = "gemini-3.5-transcribe"   # purpose-built ASR model
+# transcribe_model = "gemini-flash-latest"     # needs timestamps, so not a pure ASR model
 
 [whisper]
 # model = "large-v3"     # tiny, base, small, medium, large-v3
