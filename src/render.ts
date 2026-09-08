@@ -40,7 +40,16 @@ export interface Applied {
   skipped: Correction[];
 }
 
-/** Pure: never mutates the input segments. */
+/**
+ * Apply corrections. Pure: never mutates the input segments.
+ *
+ * A quoted phrase often straddles a segment boundary -- ASR splits on pauses,
+ * not on meaning, so "git checkout windows-main" can land half in one segment
+ * and half in the next. Searching segment by segment misses those entirely, and
+ * they were a fifth of all corrections on the first real video tested. So the
+ * match runs against the joined text and the replacement is written back across
+ * however many segments it spanned.
+ */
 export function applyCorrections(
   segments: Segment[],
   corrections: Correction[],
@@ -52,20 +61,58 @@ export function applyCorrections(
   const skipped: Correction[] = [];
 
   for (const c of corrections) {
-    const rank = RANK[(String(c.confidence).toLowerCase() as Confidence)] ?? 2;
+    const rank = RANK[String(c.confidence).toLowerCase() as Confidence] ?? 2;
     if (rank < floor || !c.was || c.now == null) {
       skipped.push(c);
       continue;
     }
-    const hit = out.find((s) => s.text.includes(c.was));
-    if (hit) {
-      hit.text = hit.text.split(c.was).join(c.now);
-      applied.push(c);
-    } else {
-      skipped.push(c);
+
+    // Offsets of each segment within the joined text, rebuilt every time
+    // because a previous correction may have changed the lengths.
+    const offsets: number[] = [];
+    let joined = "";
+    for (const seg of out) {
+      offsets.push(joined.length);
+      joined += (joined ? " " : "") + seg.text;
+      if (offsets.length > 1) offsets[offsets.length - 1] = joined.length - seg.text.length;
     }
+
+    const at = joined.indexOf(c.was);
+    if (at < 0) {
+      skipped.push(c);
+      continue;
+    }
+    const endAt = at + c.was.length;
+
+    const segmentAt = (pos: number) => {
+      let idx = 0;
+      for (let i = 0; i < out.length; i++) if (offsets[i]! <= pos) idx = i;
+      return idx;
+    };
+    const first = segmentAt(at);
+    const last = segmentAt(endAt - 1);
+
+    if (first === last) {
+      const local = at - offsets[first]!;
+      const seg = out[first]!;
+      seg.text = seg.text.slice(0, local) + c.now + seg.text.slice(local + c.was.length);
+    } else {
+      // Whole replacement goes into the segment where the match began; the
+      // matched tail is removed from the ones it ran into. Wording stays
+      // correct, and the timestamp is the one the phrase started at.
+      const head = out[first]!;
+      head.text = (head.text.slice(0, at - offsets[first]!) + c.now).trim();
+
+      for (let i = first + 1; i <= last; i++) {
+        const seg = out[i]!;
+        const consumedTo = endAt - offsets[i]!;
+        seg.text = (consumedTo >= seg.text.length ? "" : seg.text.slice(consumedTo)).trim();
+      }
+    }
+    applied.push(c);
   }
-  return { segments: out, applied, skipped };
+
+  return { segments: out.filter((s) => s.text), applied, skipped };
 }
 
 export interface RenderOptions {

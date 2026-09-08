@@ -8,7 +8,8 @@
     "embed": "bun run scripts/embed-asr.ts",
     "build": "bun run embed && bun build --compile --minify src/cli.tsx --outfile dist/vid",
     "dev": "bun run embed && bun run src/cli.tsx",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
   },
   "dependencies": {
     "@google/genai": "^1.0.0",
