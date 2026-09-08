@@ -116,8 +116,12 @@ export async function render(wd: WorkDir, opts: RenderOptions = {}): Promise<str
 
   segments.forEach((s, i) => {
     const next = segments[i + 1]?.start ?? s.end + 1;
+    // The first segment claims everything before it: a note timestamped 00:00
+    // would otherwise be dropped whenever speech starts a fraction of a second
+    // in, which is almost always.
+    const from = i === 0 ? Number.NEGATIVE_INFINITY : s.start;
     L.push(`**[${clock(s.start)}]** ${s.text}`);
-    for (const note of notesBetween(s.start, next)) {
+    for (const note of notesBetween(from, next)) {
       if (note.summary) L.push(`> 🖥 ${note.summary.trim()}`);
       if (note.text) {
         L.push("> ```");

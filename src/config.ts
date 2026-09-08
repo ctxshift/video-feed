@@ -26,7 +26,9 @@ export interface Config {
 }
 
 const DEFAULTS: Config = {
-  gemini: { videoModel: "gemini-2.5-pro", transcribeModel: "gemini-2.5-pro" },
+  // Aliases, not pinned IDs: model names rot fast, and a stale default is the
+  // more likely failure. `vid models` lists what a key can actually see.
+  gemini: { videoModel: "gemini-flash-latest", transcribeModel: "gemini-3.5-transcribe" },
   whisper: { model: "large-v3", device: "cuda" },
   vision: { fps: 1, chunkS: 600, highRes: true },
   paths: {},
@@ -108,7 +110,24 @@ export interface KeyResolution {
  * Resolve the API key. Returns its origin so `vid config` can report where it
  * came from without ever printing it.
  */
+let resolvedKey: KeyResolution | undefined;
+
+/**
+ * Resolve once per process. `api_key_command` shells out to a secret manager,
+ * which costs a second or so, and several code paths may want the key in one
+ * run.
+ *
+ * Deliberately not cached to disk: the whole point of `api_key_command` is that
+ * the secret is not stored. Anyone happy to have it on disk should set
+ * `api_key` in the config file instead -- same trade, one obvious location,
+ * already supported.
+ */
 export async function resolveApiKey(): Promise<KeyResolution> {
+  if (resolvedKey) return resolvedKey;
+  return (resolvedKey = await resolveApiKeyUncached());
+}
+
+async function resolveApiKeyUncached(): Promise<KeyResolution> {
   const fromEnv = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (fromEnv?.trim()) {
     return { key: fromEnv.trim(), origin: "env", detail: "GEMINI_API_KEY" };
@@ -162,9 +181,10 @@ export const STARTER = `# video-feed configuration
 # Alternative: the key itself. If you use this, run:  chmod 600 this file
 # api_key = "..."
 
-# Model IDs change; \`vid models\` lists what your key can actually see.
-# video_model = "gemini-2.5-pro"
-# transcribe_model = "gemini-2.5-pro"
+# Defaults track the newest release. Pin an exact ID for reproducibility;
+# \`vid models\` lists what your key can actually see.
+# video_model = "gemini-flash-latest"          # or gemini-pro-latest for hard material
+# transcribe_model = "gemini-3.5-transcribe"   # purpose-built ASR model
 
 [whisper]
 # model = "large-v3"     # tiny, base, small, medium, large-v3
