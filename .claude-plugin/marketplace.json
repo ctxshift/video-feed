@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "video-feed",
+  "description": "Accurate, context-aware video transcripts.",
+  "owner": {
+    "name": "ctxshift",
+    "url": "https://github.com/ctxshift"
+  },
+  "plugins": [
+    {
+      "name": "video-feed",
+      "description": "Transcribe video verbatim with local Whisper, then correct technical terms against what is visible on screen.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}

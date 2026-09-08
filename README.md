@@ -12,7 +12,34 @@ yt-dlp ──> faster-whisper ──> Gemini (sees the screen) ──> merged do
  audio        verbatim            corrections + notes       transcript + screen
 ```
 
+## Install as a plugin
+
+Agents discover setup, auth and usage from the bundled skills.
+
+**Claude Code**
+
+```bash
+/plugin marketplace add ctxshift/video-feed
+/plugin install video-feed@video-feed
+```
+
+**Codex** reads `.agents/skills/`, so a clone is enough — either in the repo, or
+copied to `~/.codex/agents/` to make it global:
+
+```bash
+cp -r .agents/skills/* ~/.codex/agents/
+```
+
+Both get two skills: `video-feed` for normal use, and `video-feed-setup` for
+installing, authenticating and troubleshooting. They are split so the setup
+instructions only load when something is actually wrong.
+
+`.agents/skills/` entries are symlinks into `skills/`, so there is one copy to
+maintain. A Windows checkout without symlink support gets text files holding a
+path instead — copy the directories there.
+
 ## Install
+
 
 One binary, three external tools:
 
@@ -128,8 +155,13 @@ rather than constants.
 ## Layout
 
 ```
-src/          TypeScript: cli, config, stages, Ink UI
-asr/          the Python transcription sidecar (source of truth)
-scripts/      embeds the sidecar into the binary at build time
-stubs/        resolves Ink's dev-only devtools import to nothing
+src/            TypeScript: cli, config, stages, Ink UI
+asr/            the Python transcription sidecar (source of truth)
+scripts/        embeds the sidecar into the binary at build time
+stubs/          resolves Ink's dev-only devtools import to nothing
+test/           correction-application tests (bun test)
+skills/         agent skills: video-feed, video-feed-setup
+.agents/skills/ symlinks to the above, for Codex
+.claude-plugin/ plugin and marketplace manifests
+AGENTS.md       always-on rules, and @includes of the skills
 ```
