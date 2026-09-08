@@ -37,9 +37,16 @@ bun install
 bun run build        # -> dist/vid
 ```
 
-Put `dist/vid` on PATH, or call it by full path. The build embeds the Python
-sidecar into the binary, so `bun run build` must be re-run after editing
-`asr/whisper.py` — editing that file alone changes nothing.
+Then put it on PATH. Symlink rather than copy, so a rebuild takes effect
+without reinstalling:
+
+```bash
+ln -sfn "$PWD/dist/vid" ~/.local/bin/vid
+```
+
+The build embeds the Python sidecar into the binary, so `bun run build` must be
+re-run after editing `asr/whisper.py` — editing that file alone changes
+nothing.
 
 ## The API key
 
