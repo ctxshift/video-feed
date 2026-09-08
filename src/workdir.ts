@@ -37,11 +37,23 @@ export class WorkDir {
     return wd;
   }
 
+  /**
+   * Accept either a path or a bare work-dir name.
+   *
+   * `vid ls` prints bare names, so those are what a caller has to hand; without
+   * the second lookup they resolve against the current directory and every
+   * command fails on the name the tool just printed.
+   */
   static async open(path: string): Promise<WorkDir> {
-    const p = resolve(path.replace(/^~/, homedir()));
-    const s = await stat(p).catch(() => null);
-    if (!s?.isDirectory()) throw new Error(`no such work dir: ${p}`);
-    return new WorkDir(p);
+    const expanded = path.replace(/^~/, homedir());
+    const candidates = [resolve(expanded)];
+    if (!expanded.includes("/")) candidates.push(join(defaultRoot(), expanded));
+
+    for (const p of candidates) {
+      const s = await stat(p).catch(() => null);
+      if (s?.isDirectory()) return new WorkDir(p);
+    }
+    throw new Error(`no such work dir: ${candidates.join(" or ")}`);
   }
 
   file(name: string): string {

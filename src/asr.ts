@@ -14,7 +14,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { ASR_HASH, ASR_SCRIPT } from "./asr-embedded";
-import { requireTool, runStreaming, type RunResult } from "./proc";
+import { requireTool, run, runStreaming, type RunResult } from "./proc";
 import { SOURCE, TRANSCRIPT, type Event, type Source, type Transcript } from "./types";
 import type { WorkDir } from "./workdir";
 
@@ -112,12 +112,65 @@ async function* whisperLocal(
   }
 
   if (!result || result.code !== 0) {
-    throw new Error(
-      `transcription sidecar exited ${result?.code}.\n` +
-        (result?.stderr ?? "").split("\n").slice(-12).join("\n"),
-    );
+    throw new Error(await sidecarFailure(result, opts.device));
   }
   return JSON.parse(result.stdout) as Transcript;
+}
+
+/** The card refusing us, in the several shapes the stack reports it. */
+export function isGpuFailure(stderr: string): boolean {
+  return /CUDA (failed|error|out of memory)|out of memory|CUBLAS|cuDNN/i.test(stderr);
+}
+
+/**
+ * Turn a sidecar crash into something a caller can act on.
+ *
+ * CUDA failures are the common case and the raw traceback buries the one line
+ * that matters twelve frames deep. They are also usually not this process's
+ * fault -- another program holding the card is enough -- so the message says
+ * who has the memory and what to do about it.
+ */
+export async function sidecarFailure(
+  result: Pick<RunResult, "code" | "stderr"> | undefined,
+  device: string,
+): Promise<string> {
+  const stderr = result?.stderr ?? "";
+  const tail = stderr.split("\n").filter(Boolean).slice(-12).join("\n");
+
+  if (isGpuFailure(stderr)) {
+    const free = await freeVram();
+    return [
+      "the GPU rejected the transcription.",
+      free ? `  ${free}` : "",
+      "  Usually something else holds the card -- ComfyUI and llama-swap both keep",
+      "  models resident between requests. Free it, or transcribe on the CPU:",
+      "",
+      `    vid words <workdir> -d cpu${device === "cuda" ? "" : ` (already on ${device})`}`,
+      "",
+      "  CPU is roughly an order of magnitude slower; a smaller model (-m medium)",
+      "  is often the better trade.",
+      "",
+      tail,
+    ]
+      .filter((l) => l !== "")
+      .join("\n");
+  }
+
+  return `transcription sidecar exited ${result?.code}.\n${tail}`;
+}
+
+/** Best-effort VRAM read; absent nvidia-smi just means a shorter message. */
+async function freeVram(): Promise<string | null> {
+  const r = await run([
+    "nvidia-smi",
+    "--query-gpu=memory.used,memory.total",
+    "--format=csv,noheader,nounits",
+  ]).catch(() => null);
+  if (!r || r.code !== 0) return null;
+
+  const [used, total] = (r.stdout.split("\n")[0] ?? "").split(",").map((n) => Number(n.trim()));
+  if (!Number.isFinite(used) || !Number.isFinite(total)) return null;
+  return `GPU has ${total! - used!} MiB free of ${total} MiB (${used} MiB in use).`;
 }
 
 async function* geminiTranscribe(
