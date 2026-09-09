@@ -1,11 +1,18 @@
 {
   "name": "video-feed",
   "description": "Accurate video transcripts: verbatim speech from local Whisper, corrected against on-screen text by a vision pass. Installs the `vid` CLI and ships skills for setup, auth and use.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": {
     "name": "ctxshift",
     "url": "https://github.com/ctxshift"
   },
   "homepage": "https://github.com/ctxshift/video-feed",
-  "keywords": ["video", "transcription", "whisper", "youtube", "gemini", "subtitles"]
+  "keywords": [
+    "video",
+    "transcription",
+    "whisper",
+    "youtube",
+    "gemini",
+    "subtitles"
+  ]
 }

@@ -56,12 +56,12 @@ user `PATH` itself, so a **new terminal** is usually all that is missing if
 `VID_INSTALL_DIR` changes where it lands and `VID_VERSION` pins a tag, in both:
 
 ```bash
-VID_INSTALL_DIR=/usr/local/bin VID_VERSION=v0.1.0 sh -c "$(curl -fsSL \
+VID_INSTALL_DIR=/usr/local/bin VID_VERSION=v0.2.0 sh -c "$(curl -fsSL \
   https://raw.githubusercontent.com/ctxshift/video-feed/main/scripts/install.sh)"
 ```
 
 ```powershell
-$env:VID_INSTALL_DIR = 'C:\tools\vid'; $env:VID_VERSION = 'v0.1.0'
+$env:VID_INSTALL_DIR = 'C:\tools\vid'; $env:VID_VERSION = 'v0.2.0'
 irm https://raw.githubusercontent.com/ctxshift/video-feed/main/scripts/install.ps1 | iex
 ```
 

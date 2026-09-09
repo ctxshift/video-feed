@@ -1,6 +1,6 @@
 {
   "name": "video-feed",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Context-aware video transcripts: verbatim speech, corrected against what is on screen.",
   "type": "module",
   "module": "src/cli.tsx",

@@ -10,6 +10,10 @@ import { basename } from "node:path";
 
 import { Command } from "commander";
 
+// Bundled into the binary at compile time, so `vid --version` and package.json
+// cannot disagree.
+import { version } from "../package.json";
+
 import { DEFAULT_HOTWORDS, transcribe } from "./asr";
 import { captionTracks, fetchVideo, probe } from "./fetch";
 import { getClient, listModels } from "./gemini";
@@ -41,7 +45,7 @@ const program = new Command();
 program
   .name("vid")
   .description("Verbatim video transcripts, corrected against what is on screen.")
-  .version("0.1.0");
+  .version(version);
 
 function die(err: unknown): never {
   const msg = err instanceof Error ? err.message : String(err);
