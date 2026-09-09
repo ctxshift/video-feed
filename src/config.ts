@@ -7,11 +7,11 @@
  * is supported for people not running one, and warns if the file is readable by
  * anyone else.
  */
-import { stat } from "node:fs/promises";
-import { homedir } from "node:os";
+import { chmod, mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 
-import { runForSecret } from "./proc";
+import { configHome } from "./paths";
+import { runForSecret, shellCommand } from "./proc";
 
 export interface Config {
   gemini: {
@@ -35,7 +35,7 @@ const DEFAULTS: Config = {
 };
 
 export function configDir(): string {
-  return join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "video-feed");
+  return configHome();
 }
 
 export function configPath(): string {
@@ -94,8 +94,15 @@ export async function loadConfig(): Promise<{ config: Config; raw: any }> {
   return cached;
 }
 
-/** True if anyone but the owner can read the config file. */
-export async function configIsExposed(): Promise<boolean> {
+/**
+ * True if anyone but the owner can read the config file.
+ *
+ * Windows has no POSIX mode bits -- node synthesises 0o666 for every file, so
+ * this would warn on every config and then advise a `chmod` that does not
+ * exist. Files under the user profile are already ACL'd to that user there.
+ */
+export async function configIsExposed(platform: NodeJS.Platform = process.platform): Promise<boolean> {
+  if (platform === "win32") return false;
   const s = await stat(configPath()).catch(() => null);
   return s ? (s.mode & 0o077) !== 0 : false;
 }
@@ -137,14 +144,18 @@ async function resolveApiKeyUncached(): Promise<KeyResolution> {
 
   if (config.gemini.apiKeyCommand) {
     const cmd = config.gemini.apiKeyCommand;
-    const r = await runForSecret(["sh", "-c", cmd]);
+    const r = await runForSecret(shellCommand(cmd));
     if (r.code !== 0 || !r.stdout.trim()) {
+      const managerHint = /^\s*op\b/.test(cmd)
+        ? "1Password: a service account needs OP_SERVICE_ACCOUNT_TOKEN in the " +
+          "environment, otherwise run `op signin` first.\n"
+        : "";
       throw new Error(
         `api_key_command failed (exit ${r.code}): ${cmd}\n` +
           "Its output is above, if it printed anything.\n" +
-          "If this is 1Password: a service account needs OP_SERVICE_ACCOUNT_TOKEN " +
-          "in the environment, otherwise run `op signin` first.\n" +
-          `Configured in ${configPath()}`,
+          managerHint +
+          `Configured in ${configPath()}\n` +
+          "No secret manager? Run `vid config --set-key` and store the key directly.",
       );
     }
     return { key: r.stdout.trim(), origin: "command", detail: cmd };
@@ -160,13 +171,19 @@ async function resolveApiKeyUncached(): Promise<KeyResolution> {
     return { key: config.gemini.apiKey, origin: "config", detail: "gemini.api_key" };
   }
 
+  const setEnv =
+    process.platform === "win32"
+      ? '  $env:GEMINI_API_KEY = "..."   (PowerShell; `setx` to keep it)'
+      : "  export GEMINI_API_KEY=...";
+
+  // Ordered by how many people can actually use each one. A secret manager is
+  // the nicest answer and the one fewest users have, so it goes last.
   throw new Error(
-    "No Gemini API key found.\n\n" +
-      "Set one of:\n" +
-      "  export GEMINI_API_KEY=...\n" +
-      `  ${configPath()}  ->  [gemini] api_key_command = "op read op://Vault/Item/credential"\n` +
-      `  ${configPath()}  ->  [gemini] api_key = "..."\n\n" ` +
-      "Run `vid config --init` to write a starter config.",
+    "No Gemini API key found. Get one at https://aistudio.google.com/apikey, then:\n\n" +
+      "  vid config --set-key          enter it once, stored in the config file\n" +
+      `${setEnv}\n` +
+      "  api_key_command = \"...\"       if you run a secret manager\n" +
+      `                                (in ${configPath()})`,
   );
 }
 
@@ -174,12 +191,16 @@ export const STARTER = `# video-feed configuration
 # Every value here is optional; these are the defaults.
 
 [gemini]
-# Preferred: a command that prints the key. Nothing sensitive is stored on disk,
-# and any secret manager works (op, pass, gopass, security, vault).
-# api_key_command = "op read op://Vault/Item/credential"
-
-# Alternative: the key itself. If you use this, run:  chmod 600 this file
+# The key itself. The easiest way to set it is \`vid config --set-key\`, which
+# prompts without echoing and writes it here with the right permissions.
 # api_key = "..."
+
+# Or, if you run a secret manager, a command that prints the key -- then no
+# secret is stored on disk at all. Any of these shapes work:
+#   api_key_command = "op read op://Vault/Item/credential"              # 1Password
+#   api_key_command = "pass show gemini/api-key"                        # pass
+#   api_key_command = "security find-generic-password -w -s gemini"     # macOS Keychain
+#   api_key_command = "powershell -c (Get-Secret gemini -AsPlainText)"  # Windows
 
 # Defaults track the newest release. Pin an exact ID for reproducibility;
 # \`vid models\` lists what your key can actually see.
@@ -197,5 +218,47 @@ export const STARTER = `# video-feed configuration
 # high_res = true        # false is cheaper, loses fine on-screen text
 
 [paths]
-# data_dir = "~/.local/share/video-feed"
+# data_dir = "~/.local/share/video-feed"   # %LOCALAPPDATA%\\video-feed\\data on Windows
 `;
+
+/**
+ * Store an API key in the config file, creating it if it does not exist.
+ *
+ * Text surgery rather than a TOML round-trip: the starter file is mostly
+ * comments explaining the options, and re-emitting parsed TOML would silently
+ * throw all of them away.
+ */
+export async function writeApiKey(key: string): Promise<{ path: string; created: boolean }> {
+  const path = configPath();
+  const file = Bun.file(path);
+  const created = !(await file.exists());
+  let text = created ? STARTER : await file.text();
+
+  const literal = `api_key = "${key.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+
+  const commentedPlaceholder = /^[ \t]*#[ \t]*api_key[ \t]*=.*$/m;
+
+  if (/^[ \t]*api_key[ \t]*=/m.test(text)) {
+    text = text.replace(/^[ \t]*api_key[ \t]*=.*$/m, literal);
+  } else if (commentedPlaceholder.test(text)) {
+    // Land on the commented-out example, so the key sits under the comment
+    // that explains it rather than above it.
+    text = text.replace(commentedPlaceholder, literal);
+  } else if (/^\[gemini\][ \t]*$/m.test(text)) {
+    text = text.replace(/^\[gemini\][ \t]*$/m, `[gemini]\n${literal}`);
+  } else {
+    text = `${text.trimEnd()}\n\n[gemini]\n${literal}\n`;
+  }
+
+  await mkdir(configDir(), { recursive: true });
+  await Bun.write(path, text);
+  // Windows has no mode bits to set; the profile directory is already ACL'd to
+  // this user, and chmod there would only toggle the read-only flag.
+  if (process.platform !== "win32") await chmod(path, 0o600);
+
+  // Both caches are now stale -- the file they were read from just changed.
+  cached = undefined;
+  resolvedKey = undefined;
+
+  return { path, created };
+}

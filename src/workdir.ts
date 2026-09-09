@@ -8,11 +8,30 @@
  */
 import { mkdir, readdir, rename, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, posix as posixPath, resolve, win32 as winPath } from "node:path";
+
+import { dataHome } from "./paths";
 
 export function defaultRoot(): string {
-  const base = process.env.XDG_DATA_HOME || join(homedir(), ".local", "share");
-  return join(base, "video-feed");
+  return dataHome();
+}
+
+/** `~` only counts as home when it is the whole first segment: `~files` is a
+ *  directory name, not a home-relative path. */
+export function expandHome(p: string, home: string = homedir()): string {
+  return p.replace(/^~(?=$|[\\/])/, home);
+}
+
+/**
+ * Is this one of the bare names `vid ls` prints, rather than a path?
+ *
+ * Windows separates with either slash, so `C:\\videos\\talk` has to read as a
+ * path there. On POSIX a backslash is a legal filename character and must not.
+ */
+export function isBareName(p: string, platform: NodeJS.Platform = process.platform): boolean {
+  const win = platform === "win32";
+  if (!p || (win ? winPath : posixPath).isAbsolute(p)) return false;
+  return !(win ? /[\\/]/ : /\//).test(p);
 }
 
 export function slug(text: string, limit = 60): string {
@@ -45,9 +64,9 @@ export class WorkDir {
    * command fails on the name the tool just printed.
    */
   static async open(path: string): Promise<WorkDir> {
-    const expanded = path.replace(/^~/, homedir());
+    const expanded = expandHome(path);
     const candidates = [resolve(expanded)];
-    if (!expanded.includes("/")) candidates.push(join(defaultRoot(), expanded));
+    if (isBareName(expanded)) candidates.push(join(defaultRoot(), expanded));
 
     for (const p of candidates) {
       const s = await stat(p).catch(() => null);

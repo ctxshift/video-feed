@@ -43,11 +43,21 @@ about 2 minutes on an RTX 3090).
 
 - `vid show <dir> corrections` — just the fixes, usually the interesting part
 - `vid show <dir> screen` — just the on-screen observations
-- `vid render <dir> -F txt | head -50` — a sample
-- `vid render <dir> -o file.md`, then grep or read specific line ranges
+- `vid render <dir> -o file.md`, then search it or read specific line ranges
+- a sample of the text, without the whole document:
 
-Answering a question about a video usually means grepping the rendered text,
-not reading the whole document.
+```bash
+vid render <dir> -F txt | head -50
+```
+
+```powershell
+vid render <dir> -F txt | Select-Object -First 50
+```
+
+Answering a question about a video usually means searching the rendered text —
+`grep` on POSIX, `Select-String` in PowerShell — not reading the whole document.
+Check which shell you are in before piping: `head`, `tail` and `grep` are not
+present in a stock PowerShell, and the failure looks like a broken `vid`.
 
 ## Cost and tuning
 

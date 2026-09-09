@@ -28,25 +28,42 @@ interface StageState {
 
 const BAR_WIDTH = 24;
 
+/**
+ * Legacy Windows console (conhost, code page 437) renders block elements and
+ * braille as mojibake -- the progress bar becomes a row of question marks.
+ * Windows Terminal, ConEmu and the VS Code terminal all announce themselves,
+ * so treat their absence on Windows as the old console and drop to ASCII.
+ * Everywhere else, Unicode.
+ */
+export function unicodeSupported(
+  env: Record<string, string | undefined> = process.env,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  if (platform !== "win32") return true;
+  return Boolean(env.WT_SESSION || env.TERM_PROGRAM || env.ConEmuANSI || env.TERM);
+}
+
+const FANCY = unicodeSupported();
+
+const GLYPHS = FANCY
+  ? { full: "█", empty: "░", spinner: "dots" as const }
+  : { full: "#", empty: "-", spinner: "line" as const };
+
 function Bar({ done, total }: { done: number; total: number }) {
   const ratio = total > 0 ? Math.min(1, done / total) : 0;
   const filled = Math.round(ratio * BAR_WIDTH);
   return (
     <Text color="cyan">
-      {"█".repeat(filled)}
-      <Text dimColor>{"░".repeat(BAR_WIDTH - filled)}</Text>
+      {GLYPHS.full.repeat(filled)}
+      <Text dimColor>{GLYPHS.empty.repeat(BAR_WIDTH - filled)}</Text>
       <Text> {Math.round(ratio * 100)}%</Text>
     </Text>
   );
 }
 
-const MARK: Record<Status, string> = {
-  pending: "·",
-  active: "",
-  done: "✔",
-  failed: "✖",
-  skipped: "–",
-};
+const MARK: Record<Status, string> = FANCY
+  ? { pending: "·", active: "", done: "✔", failed: "✖", skipped: "–" }
+  : { pending: ".", active: "", done: "+", failed: "x", skipped: "-" };
 
 const COLOR: Record<Status, string> = {
   pending: "gray",
@@ -66,7 +83,7 @@ function Pipeline({ subscribe }: { subscribe: (cb: (s: StageState[]) => void) =>
         <Box key={s.name} flexDirection="column">
           <Box>
             <Text color={COLOR[s.status]}>
-              {s.status === "active" ? <Spinner type="dots" /> : MARK[s.status]}
+              {s.status === "active" ? <Spinner type={GLYPHS.spinner} /> : MARK[s.status]}
             </Text>
             <Text> {s.name}</Text>
             {s.detail ? <Text dimColor> — {s.detail}</Text> : null}
@@ -125,7 +142,7 @@ export async function runPipeline<C>(stages: Stage<C>[], ctx: C, opts: { tty?: b
       const st = state[i]!;
       st.status = "active";
       push();
-      line(`▶ ${stage.name}`);
+      line(`${FANCY ? "▶" : ">"} ${stage.name}`);
 
       try {
         const gen = stage.run(ctx);
@@ -150,7 +167,7 @@ export async function runPipeline<C>(stages: Stage<C>[], ctx: C, opts: { tty?: b
         st.status = "done";
         st.progress = undefined;
         push();
-        line(`✔ ${stage.name}${st.detail ? ` — ${st.detail}` : ""}`);
+        line(`${FANCY ? "✔" : "+"} ${stage.name}${st.detail ? ` — ${st.detail}` : ""}`);
       } catch (err) {
         st.status = "failed";
         st.detail = err instanceof Error ? err.message.split("\n")[0]! : String(err);

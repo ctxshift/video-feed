@@ -30,6 +30,20 @@ auditable edits is the design, not a limitation to fix.
 **Model IDs are configuration, not constants.** They change faster than this
 code. Defaults are `-latest` aliases; `vid models` lists what a key can see.
 
+**Windows is a supported platform, not an afterthought.** Nothing here may
+require bash: the POSIX installer is `sh`, Windows has its own PowerShell one,
+and anything with real logic goes in a `scripts/*.ts` that Bun runs everywhere.
+Paths come from `src/paths.ts` rather than a hardcoded `~/.config`, user
+commands go through `shellCommand()` rather than `sh -c`, and tool lookup uses
+`Bun.which` rather than `command -v`. CI runs the suite on Linux, macOS and
+Windows, and the release workflow starts each binary on its own OS before
+publishing — a cross-compiled build nobody has run is not a tested build.
+
+**Assume no secret manager.** `vid config --set-key` is the path most users
+take; `api_key_command` is for the minority who run `op`, `pass` or similar.
+Error messages and docs lead with the former, and only mention 1Password when
+the failing command is actually `op`.
+
 **Verify by looking at output, not at summaries.** A stage reporting
 "18 corrections" looked like success while four of them silently failed to
 apply. Read the rendered document.

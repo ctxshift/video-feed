@@ -10,10 +10,10 @@
  * stage, where the screen is available as evidence.
  */
 import { mkdir } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { ASR_HASH, ASR_SCRIPT } from "./asr-embedded";
+import { cacheHome } from "./paths";
 import { requireTool, run, runStreaming, type RunResult } from "./proc";
 import { SOURCE, TRANSCRIPT, type Event, type Source, type Transcript } from "./types";
 import type { WorkDir } from "./workdir";
@@ -27,7 +27,7 @@ export const DEFAULT_HOTWORDS =
 /** Materialise the embedded sidecar. Hash in the name means a rebuilt binary
  *  writes a new file instead of silently reusing a stale one. */
 async function sidecarPath(): Promise<string> {
-  const dir = join(process.env.XDG_CACHE_HOME || join(homedir(), ".cache"), "video-feed");
+  const dir = cacheHome();
   await mkdir(dir, { recursive: true });
   const path = join(dir, `whisper-${ASR_HASH}.py`);
   if (!(await Bun.file(path).exists())) await Bun.write(path, ASR_SCRIPT);
@@ -77,14 +77,14 @@ async function* whisperLocal(
   audio: string,
   opts: AsrOptions & { device: string; hotwords: string },
 ): AsyncGenerator<Event, Transcript> {
-  await requireTool("uv");
+  const uv = await requireTool("uv");
   const script = await sidecarPath();
   const model = opts.model ?? "large-v3";
 
   yield { type: "status", message: `preparing ${model} (first run downloads the model)` };
 
   const cmd = [
-    "uv", "run", "--script", script,
+    uv, "run", "--script", script,
     "--audio", audio,
     "--model", model,
     "--device", opts.device,

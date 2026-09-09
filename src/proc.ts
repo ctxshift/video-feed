@@ -6,20 +6,58 @@ export class ToolMissing extends Error {
   }
 }
 
-const HINTS: Record<string, string> = {
-  "yt-dlp": "Install with: uv tool install yt-dlp",
-  uv: "Install from https://docs.astral.sh/uv/ — needed to run the transcription sidecar.",
-  ffmpeg: "Install with your package manager, e.g. apt install ffmpeg",
-};
-
-export async function requireTool(tool: string): Promise<void> {
-  const which = Bun.spawn(["sh", "-c", `command -v ${tool}`], {
-    stdout: "ignore",
-    stderr: "ignore",
-  });
-  if ((await which.exited) !== 0) {
-    throw new ToolMissing(tool, HINTS[tool] ?? "");
+/** Install advice worth printing is platform-specific; a Windows user told to
+ *  `apt install ffmpeg` learns nothing. */
+export function hintFor(tool: string, platform: NodeJS.Platform = process.platform): string {
+  const win = platform === "win32";
+  switch (tool) {
+    case "yt-dlp":
+      return "Install with: uv tool install yt-dlp";
+    case "uv":
+      return win
+        ? "Install with: winget install --id=astral-sh.uv — needed to run the transcription sidecar."
+        : "Install from https://docs.astral.sh/uv/ — needed to run the transcription sidecar.";
+    case "ffmpeg":
+      if (win) return "Install with: winget install Gyan.FFmpeg";
+      if (platform === "darwin") return "Install with: brew install ffmpeg";
+      return "Install with your package manager, e.g. apt install ffmpeg";
+    default:
+      return "";
   }
+}
+
+/**
+ * Locate an external tool, or say how to install it.
+ *
+ * Returns the absolute path, and callers spawn *that* rather than the bare
+ * name. Bun.which walks PATH in-process and honours PATHEXT, so `uv` resolves
+ * to `uv.exe` on Windows -- where spawning a bare name is the ambiguous case,
+ * and where the old `sh -c "command -v"` had no shell to run in at all.
+ */
+export async function requireTool(tool: string): Promise<string> {
+  const found = Bun.which(tool);
+  if (!found) throw new ToolMissing(tool, hintFor(tool));
+  return found;
+}
+
+/**
+ * Wrap a user-supplied command string for the platform's shell.
+ *
+ * This exists for `api_key_command`, which is by definition a shell one-liner:
+ * pipes, quoting and `$(...)` are the point of it. `cmd.exe` rather than
+ * PowerShell on Windows because it is what `%ComSpec%` names, it is always
+ * present, and `/d /s /c` is the quoting shape every other tool uses to run one
+ * command string. PowerShell users can still say `powershell -c "..."`.
+ */
+export function shellCommand(
+  cmd: string,
+  o: { platform?: NodeJS.Platform; env?: Record<string, string | undefined> } = {},
+): string[] {
+  const platform = o.platform ?? process.platform;
+  const env = o.env ?? process.env;
+  return platform === "win32"
+    ? [env.ComSpec || "cmd.exe", "/d", "/s", "/c", cmd]
+    : ["/bin/sh", "-c", cmd];
 }
 
 export interface RunResult {
@@ -58,13 +96,16 @@ export async function* runStreaming(
     const { done, value } = await reader.read();
     if (done) break;
     buf += decoder.decode(value, { stream: true });
+    // Windows Python writes CRLF; a trailing \r would break JSON.parse on every
+    // event and silently drop the whole progress stream.
     const lines = buf.split("\n");
     buf = lines.pop() ?? "";
     for (const line of lines) {
-      if (!line.trim()) continue;
-      stderrLines.push(line);
+      const trimmed = line.replace(/\r$/, "");
+      if (!trimmed.trim()) continue;
+      stderrLines.push(trimmed);
       try {
-        yield JSON.parse(line);
+        yield JSON.parse(trimmed);
       } catch {
         // Not an event -- library noise (CUDA warnings and the like). Kept for
         // the error message if the process ends up failing.

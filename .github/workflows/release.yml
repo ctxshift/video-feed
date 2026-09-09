@@ -1,9 +1,10 @@
 # Cut a release: tag `v*` and push.
 #
-# Bun cross-compiles every target from one Linux runner, so this is a single
-# job rather than a matrix across four runners. The sidecar has to be embedded
-# before any target is built -- it is baked into the binary, not shipped beside
-# it.
+# Bun cross-compiles every target from one Linux runner, so building is a single
+# job rather than a matrix. Running is not: a cross-compiled Windows binary that
+# nobody has started is not a Windows build, so `smoke` executes each artifact
+# on its own OS before anything is published, and `verify-install` then installs
+# the published release the way a user would.
 name: release
 
 on:
@@ -18,8 +19,11 @@ on:
 permissions:
   contents: write
 
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -62,18 +66,103 @@ jobs:
 
           cd out && sha256sum vid-* > SHA256SUMS && cat SHA256SUMS
 
-      - name: Smoke-test the native build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: out/
+          retention-days: 1
+
+  # Start each build on the OS it claims to support. A binary that only ever ran
+  # on the machine that cross-compiled it has not been tested.
+  smoke:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset: vid-linux-x64
+          - os: macos-latest
+            asset: vid-darwin-arm64
+          - os: windows-latest
+            asset: vid-windows-x64.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: out
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+        # scripts/smoke.ts looks in dist/, which is where a local build lands.
+      - name: Stage the artifact as a local build
+        shell: bash
         run: |
-          chmod +x out/vid-linux-x64
-          # --version must not need a key, a GPU, or any external tool.
-          test "$(out/vid-linux-x64 --version)" = "$(node -p "require('./package.json').version")"
-          out/vid-linux-x64 --help > /dev/null
+          mkdir -p dist
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp "out/${{ matrix.asset }}" dist/vid.exe
+          else
+            cp "out/${{ matrix.asset }}" dist/vid
+            chmod +x dist/vid
+          fi
+
+      - run: bun run scripts/smoke.ts
+
+  publish:
+    needs: smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: out
 
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ inputs.tag || github.ref_name }}" \
-            --title "${{ inputs.tag || github.ref_name }}" \
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$TAG" \
             --generate-notes \
             out/vid-* out/SHA256SUMS
+
+  # The installers are the first thing a user touches, and they are the one part
+  # that cannot be tested before the release exists. Run them against it.
+  verify-install:
+    needs: publish
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Install with scripts/install.ps1
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VID_VERSION: ${{ inputs.tag || github.ref_name }}
+        run: |
+          ./scripts/install.ps1
+          # A fresh PowerShell picks up the PATH entry the installer wrote.
+          pwsh -NoProfile -Command 'vid --version'
+
+        # `sh`, not bash: the script must not need one.
+      - name: Install with scripts/install.sh
+        if: runner.os != 'Windows'
+        env:
+          VID_VERSION: ${{ inputs.tag || github.ref_name }}
+        run: |
+          sh scripts/install.sh
+          "$HOME/.local/bin/vid" --version

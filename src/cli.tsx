@@ -6,6 +6,7 @@
  * artifact already exists, so a failure costs one step rather than the run.
  */
 import { chmod, mkdir } from "node:fs/promises";
+import { basename } from "node:path";
 
 import { Command } from "commander";
 
@@ -19,7 +20,9 @@ import {
   configPath,
   loadConfig,
   resolveApiKey,
+  writeApiKey,
 } from "./config";
+import { readSecret } from "./secret";
 import { render as renderDoc } from "./render";
 import { runPipeline, type Stage } from "./ui";
 import {
@@ -97,7 +100,7 @@ program
           async ([c, f]) => ((await wd.has(f)) ? c : "·"),
         ),
       );
-      console.log(`  [${flags.join("")}]  ${wd.path.split("/").pop()}`);
+      console.log(`  [${flags.join("")}]  ${basename(wd.path)}`);
     }
     console.log("\n  F=fetched  W=words  S=screen  C=corrections");
   });
@@ -243,6 +246,7 @@ program
   .description("Show resolved settings and where each came from.")
   .option("--init", "Write a starter config file.")
   .option("--path", "Print the config file path and exit.")
+  .option("--set-key", "Enter a Gemini API key and store it. Input is not echoed.")
   .action(async (o: any) => {
     try {
       if (o.path) {
@@ -256,8 +260,40 @@ program
         }
         await mkdir(configDir(), { recursive: true });
         await Bun.write(configPath(), STARTER);
-        await chmod(configPath(), 0o600);
+        // Windows has no mode bits to set -- chmod there only toggles the
+        // read-only flag, which is not what 0o600 means and would be a lie to
+        // report. The profile directory is already ACL'd to this user.
+        if (process.platform !== "win32") await chmod(configPath(), 0o600);
         console.log(`wrote ${configPath()}`);
+        return;
+      }
+
+      if (o.setKey) {
+        const key = (await readSecret("Gemini API key (not shown): ")).trim();
+        if (!key) throw new Error("no key entered — nothing written");
+        // A warning, not a refusal: Google has changed key formats before, and
+        // rejecting a valid key would be worse than accepting a wrong-looking
+        // one that fails loudly on first use.
+        if (!/^[A-Za-z0-9_-]{20,}$/.test(key)) {
+          process.stderr.write("warning: that does not look like a Gemini API key\n");
+        }
+
+        const { path, created } = await writeApiKey(key);
+        console.log(`${created ? "wrote" : "updated"} ${path}`);
+        console.log(
+          process.platform === "win32"
+            ? "  readable by your Windows account only"
+            : "  mode 600",
+        );
+
+        // Say so when something else will win, rather than leaving the user to
+        // wonder why the key they just set is not the one being used.
+        const { config: after } = await loadConfig();
+        if (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) {
+          console.log("  note: GEMINI_API_KEY in the environment takes precedence over this");
+        } else if (after.gemini.apiKeyCommand) {
+          console.log("  note: api_key_command in that file takes precedence over this");
+        }
         return;
       }
 
@@ -267,6 +303,10 @@ program
 
       // The key itself is never printed; only where it was found.
       let keyLine: string;
+      // How to set one, kept whole. Squeezing it onto the summary line used to
+      // cut it at the first newline, which left a new user reading "...then:"
+      // with the actual instructions missing.
+      let keyHelp = "";
       try {
         const r = await resolveApiKey();
         const shown = { env: `environment (${r.detail})`, command: `command: ${r.detail}`,
@@ -276,7 +316,8 @@ program
           keyLine += "  [readable by others: chmod 600]";
         }
       } catch (e) {
-        keyLine = `NOT SET — ${e instanceof Error ? e.message.split("\n")[0] : e}`;
+        keyLine = "NOT SET";
+        keyHelp = e instanceof Error ? e.message : String(e);
       }
 
       console.log(`gemini key  : ${keyLine}`);
@@ -285,7 +326,8 @@ program
       console.log(`whisper     : ${config.whisper.model} on ${config.whisper.device}`);
       console.log(`vision      : fps ${config.vision.fps}, chunk ${config.vision.chunkS}s, ` +
                   `${config.vision.highRes ? "high" : "low"} res`);
-      if (!exists) console.log(`\nWrite a starter config with:  vid config --init`);
+      if (keyHelp) console.log(`\n${keyHelp}`);
+      else if (!exists) console.log(`\nWrite a starter config with:  vid config --init`);
     } catch (e) {
       die(e);
     }

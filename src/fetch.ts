@@ -11,11 +11,10 @@ import { SOURCE, type Event, type Source } from "./types";
 import { WorkDir } from "./workdir";
 
 async function ytdlp(args: string[]) {
-  return run(["yt-dlp", "--no-warnings", ...args]);
+  return run([await requireTool("yt-dlp"), "--no-warnings", ...args]);
 }
 
 export async function probe(url: string): Promise<any> {
-  await requireTool("yt-dlp");
   const r = await ytdlp(["--dump-single-json", url]);
   if (r.code !== 0) throw new Error(`yt-dlp could not read ${url}:\n${r.stderr.trim().slice(0, 800)}`);
   return JSON.parse(r.stdout);

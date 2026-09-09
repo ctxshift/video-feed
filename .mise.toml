@@ -8,66 +8,26 @@ uv = "latest"       # runs the transcription sidecar at runtime
 
 # ffmpeg is a system package -- mise does not manage it.
 
-# `dev` and `undev` honour VID_INSTALL_DIR, the same variable scripts/install.sh
-# uses; both default to ~/.local/bin.
+# Every task is a single command line so it runs identically under sh and under
+# cmd.exe. The work that needs real logic lives in scripts/dev.ts, which Bun
+# runs on every platform -- there is no shell dependency in this file.
 
 [tasks.build]
 description = "Compile dist/vid for this machine"
-run = """
-bun install
-bun run build
-"""
+run = "bun install && bun run build"
 
+# `bun run embed` first: src/asr-embedded.ts is generated and gitignored.
 [tasks.check]
 description = "Typecheck and test"
-run = """
-bun run embed      # src/asr-embedded.ts is generated and gitignored
-bun run typecheck
-bun test
-"""
+run = "bun run embed && bun run typecheck && bun test"
 
+# `dev` and `undev` honour VID_INSTALL_DIR, the same variable the installers
+# use. Default is ~/.local/bin, or %LOCALAPPDATA%\Programs\vid on Windows.
 [tasks.dev]
-description = "Build and symlink dist/vid onto PATH (dev mode)"
+description = "Build and put dist/vid on PATH (dev mode)"
 depends = ["build"]
-run = """
-set -eu   # mise runs tasks with sh; no pipefail here
-dir="${VID_INSTALL_DIR:-$HOME/.local/bin}"
-target="$dir/vid"
-mkdir -p "$dir"
-
-# Say what is being replaced. A released install is a real file; leaving that
-# in place silently is how you end up debugging a binary you did not build.
-if [ -L "$target" ]; then
-  echo "  replacing existing symlink -> $(readlink "$target")"
-elif [ -e "$target" ]; then
-  echo "  replacing installed release ($("$target" --version 2>/dev/null || echo 'unknown'))"
-fi
-
-ln -sfn "$PWD/dist/vid" "$target"
-echo "  $target -> $PWD/dist/vid"
-echo "  vid $("$target" --version)"
-
-case ":$PATH:" in
-  *":$dir:"*) ;;
-  *) echo "  note: $dir is not on PATH" ;;
-esac
-
-echo "  rebuild with: mise run build   (the symlink picks it up)"
-"""
+run = "bun run scripts/dev.ts link"
 
 [tasks.undev]
-description = "Drop the dev symlink and reinstall the published release"
-run = """
-set -eu   # mise runs tasks with sh; no pipefail here
-dir="${VID_INSTALL_DIR:-$HOME/.local/bin}"
-target="$dir/vid"
-
-if [ -L "$target" ]; then
-  rm -v "$target"
-elif [ -e "$target" ]; then
-  echo "  $target is not a symlink; leaving it alone"
-  exit 0
-fi
-
-VID_INSTALL_DIR="$dir" bash scripts/install.sh
-"""
+description = "Drop the dev link and reinstall the published release"
+run = "bun run scripts/dev.ts unlink"

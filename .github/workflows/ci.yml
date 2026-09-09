@@ -1,0 +1,43 @@
+# Check every push on all three platforms.
+#
+# Windows is in the matrix on purpose: the paths, the shell used for
+# `api_key_command`, and the work-dir name handling all differ there, and a
+# Linux-only CI would not notice any of it breaking.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+        # src/asr-embedded.ts is generated and gitignored, so this comes before
+        # anything that type-checks or builds.
+      - name: Embed the transcription sidecar
+        run: bun run embed
+
+      - run: bun run typecheck
+      - run: bun test
+
+      - name: Build for this machine
+        run: bun run build
+
+        # The binary has to start with no key, no GPU and no external tool.
+      - name: Smoke-test the native build
+        run: bun run scripts/smoke.ts

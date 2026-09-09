@@ -1,12 +1,15 @@
-#!/usr/bin/env bash
+#!/bin/sh
 # Install the `vid` binary from GitHub Releases.
 #
-#   curl -fsSL https://raw.githubusercontent.com/ctxshift/video-feed/main/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/ctxshift/video-feed/main/scripts/install.sh | sh
+#
+# POSIX sh on purpose: bash is not installed everywhere this has to run, and
+# nothing here needs it. Windows has its own installer, scripts/install.ps1.
 #
 # Environment:
 #   VID_VERSION      tag to install, e.g. v0.1.0   (default: latest)
 #   VID_INSTALL_DIR  where to put it               (default: ~/.local/bin)
-set -euo pipefail
+set -eu
 
 REPO="ctxshift/video-feed"
 VERSION="${VID_VERSION:-latest}"
@@ -22,7 +25,11 @@ arch="$(uname -m)"
 case "$os" in
   Linux)  os_tag=linux ;;
   Darwin) os_tag=darwin ;;
-  MINGW*|MSYS*|CYGWIN*) os_tag=windows ;;
+  MINGW*|MSYS*|CYGWIN*)
+    os_tag=windows
+    info "Git Bash detected. The native installer is:"
+    info '  irm https://raw.githubusercontent.com/ctxshift/video-feed/main/scripts/install.ps1 | iex'
+    ;;
   *) die "unsupported OS: $os. Build from source: https://github.com/$REPO" ;;
 esac
 
@@ -32,13 +39,13 @@ case "$arch" in
   *) die "unsupported architecture: $arch. Build from source: https://github.com/$REPO" ;;
 esac
 
-asset="vid-${os_tag}-${arch_tag}"
-[ "$os_tag" = windows ] && asset="${asset}.exe"
-
-# Only x64 is built for Windows, and only x64/arm64 for the rest.
+# Only x64 is built for Windows; x64 and arm64 for the rest.
 if [ "$os_tag" = windows ] && [ "$arch_tag" != x64 ]; then
   die "no Windows build for $arch"
 fi
+
+asset="vid-${os_tag}-${arch_tag}"
+[ "$os_tag" = windows ] && asset="${asset}.exe"
 
 if [ "$VERSION" = latest ]; then
   base="https://github.com/$REPO/releases/latest/download"
