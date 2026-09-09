@@ -36,14 +36,31 @@ it is running on, so trust the error rather than guessing. On Windows that is
 One binary, no runtime. The installer picks the right build for the platform and
 verifies its checksum.
 
+**If you are an agent, use the two-step form.** Piping a downloaded script
+straight into an interpreter — `curl … | sh`, `irm … | iex` — is a blocked
+pattern and you will be refused. It is the piping that is blocked, not the
+shell, so download the file, read it, then run it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ctxshift/video-feed/main/scripts/install.sh -o install.sh
+sh install.sh
+```
+
+```powershell
+irm https://raw.githubusercontent.com/ctxshift/video-feed/main/scripts/install.ps1 -OutFile install.ps1
+./install.ps1
+```
+
+The one-liners below are for a human at a keyboard.
+
 **Linux and macOS** — POSIX `sh`; bash is not required:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ctxshift/video-feed/main/scripts/install.sh | sh
 ```
 
-**Windows** — PowerShell. Do not reach for WSL, Git Bash or `curl | bash` here;
-none of them is needed:
+**Windows** — PowerShell. Do not reach for WSL or Git Bash here; neither is
+needed:
 
 ```powershell
 irm https://raw.githubusercontent.com/ctxshift/video-feed/main/scripts/install.ps1 | iex
@@ -152,8 +169,17 @@ the user does not actually run a secret manager, the fix is `vid config
 --set-key` instead — not debugging the command.
 
 **`vid` not found on Windows right after installing** — the installer adds its
-directory to the user `PATH`, which existing terminals do not pick up. Open a
-new one before concluding anything is broken.
+directory to the user `PATH`, which existing terminals do not pick up. A human
+opens a new terminal. You cannot, so refresh the current session from the
+registry instead — this is what a new shell would have read:
+
+```powershell
+$env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')
+```
+
+Each tool call may also be a fresh process that never saw the update, so prefer
+the full path — `$env:LOCALAPPDATA\Programs\vid\vid.exe` — if a bare `vid`
+keeps coming back not found.
 
 **First `vid words` looks hung** — the first run resolves faster-whisper and
 its CUDA wheels (a few GB), then downloads the model. Say so rather than
@@ -171,14 +197,18 @@ config, `cuda` by default; `cpu` is many times slower.
 
 ## Where things live
 
-| What | POSIX | Windows |
-|---|---|---|
-| settings | `~/.config/video-feed/config.toml` (mode 600) | `%APPDATA%\video-feed\config.toml` |
-| work dirs | `~/.local/share/video-feed/<video>/` | `%LOCALAPPDATA%\video-feed\data\<video>\` |
-| sidecar cache | `~/.cache/video-feed/` | `%LOCALAPPDATA%\video-feed\cache\` |
+The same three directories on every platform, Windows included — `~` is the
+user profile there, so `C:\Users\<name>\.config\video-feed\config.toml`:
 
-`XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_CACHE_HOME` override these on every
-platform. `vid config --path` prints the settings path; do not guess it.
+| Path | What |
+|---|---|
+| `~/.config/video-feed/config.toml` | settings (mode 600 on POSIX) |
+| `~/.local/share/video-feed/<video>/` | per-video work dirs and artifacts |
+| `~/.cache/video-feed/` | the extracted Python sidecar |
+
+`XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_CACHE_HOME` override these. There is
+no per-platform variant and nothing to migrate. `vid config --path` prints the
+settings path; do not guess it.
 
 Work dirs hold the downloaded video and audio and are large. `vid ls` shows
 them and which stages are done.

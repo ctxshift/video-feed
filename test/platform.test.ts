@@ -5,36 +5,31 @@ import { hintFor, shellCommand } from "../src/proc";
 import { unicodeSupported } from "../src/ui";
 import { expandHome, isBareName } from "../src/workdir";
 
-const win = { platform: "win32" as const, home: "C:\\Users\\dev" };
-const winEnv = { APPDATA: "C:\\Users\\dev\\AppData\\Roaming", LOCALAPPDATA: "C:\\Users\\dev\\AppData\\Local" };
-const posix = { platform: "linux" as const, home: "/home/dev", env: {} };
+const home = { home: "/home/dev", env: {} };
 
 describe("platform directories", () => {
-  test("Windows uses roaming AppData for settings and Local for bulk data", () => {
-    expect(configHome({ ...win, env: winEnv })).toBe("C:\\Users\\dev\\AppData\\Roaming\\video-feed");
-    expect(dataHome({ ...win, env: winEnv })).toBe("C:\\Users\\dev\\AppData\\Local\\video-feed\\data");
-    expect(cacheHome({ ...win, env: winEnv })).toBe("C:\\Users\\dev\\AppData\\Local\\video-feed\\cache");
+  test("one layout everywhere: XDG, and no per-platform special case", () => {
+    expect(configHome(home)).toBe("/home/dev/.config/video-feed");
+    expect(dataHome(home)).toBe("/home/dev/.local/share/video-feed");
+    expect(cacheHome(home)).toBe("/home/dev/.cache/video-feed");
+  });
+
+  test("each XDG variable overrides its own directory", () => {
+    expect(configHome({ home: "/home/dev", env: { XDG_CONFIG_HOME: "/tmp/cfg" } }))
+      .toBe("/tmp/cfg/video-feed");
+    expect(dataHome({ home: "/home/dev", env: { XDG_DATA_HOME: "/tmp/data" } }))
+      .toBe("/tmp/data/video-feed");
+    expect(cacheHome({ home: "/home/dev", env: { XDG_CACHE_HOME: "/tmp/cache" } }))
+      .toBe("/tmp/cache/video-feed");
+  });
+
+  test("an override to one directory leaves the others alone", () => {
+    const env = { XDG_CONFIG_HOME: "/tmp/cfg" };
+    expect(dataHome({ home: "/home/dev", env })).toBe("/home/dev/.local/share/video-feed");
   });
 
   test("work dirs and the sidecar cache never share a directory", () => {
-    expect(dataHome({ ...win, env: winEnv })).not.toBe(cacheHome({ ...win, env: winEnv }));
-  });
-
-  test("POSIX keeps the XDG layout it already had", () => {
-    expect(configHome(posix)).toBe("/home/dev/.config/video-feed");
-    expect(dataHome(posix)).toBe("/home/dev/.local/share/video-feed");
-    expect(cacheHome(posix)).toBe("/home/dev/.cache/video-feed");
-  });
-
-  test("XDG_* wins everywhere it is set, Windows included", () => {
-    const env = { ...winEnv, XDG_CONFIG_HOME: "X:\\cfg", XDG_DATA_HOME: "X:\\data" };
-    expect(configHome({ ...win, env })).toBe("X:\\cfg\\video-feed");
-    expect(dataHome({ ...win, env })).toBe("X:\\data\\video-feed");
-    expect(configHome({ ...posix, env: { XDG_CONFIG_HOME: "/tmp/cfg" } })).toBe("/tmp/cfg/video-feed");
-  });
-
-  test("Windows without the AppData variables still lands somewhere real", () => {
-    expect(configHome({ ...win, env: {} })).toBe("C:\\Users\\dev\\.config\\video-feed");
+    expect(dataHome(home)).not.toBe(cacheHome(home));
   });
 });
 

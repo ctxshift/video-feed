@@ -134,7 +134,10 @@ if ($already) {
   $updated = ((@($entries) + $InstallDir) -join ';')
   [Environment]::SetEnvironmentVariable('Path', $updated, 'User')
   Info "added $InstallDir to your user PATH"
-  Info 'open a new terminal for that to take effect'
+  Info 'open a new terminal for that to take effect, or in an existing one:'
+  # An agent or a script cannot "open a new terminal", so give the in-process
+  # equivalent. Reading both scopes back is what a new shell would have done.
+  Info "  `$env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')"
 }
 
 # Make it usable in this session too, without waiting for a new terminal.

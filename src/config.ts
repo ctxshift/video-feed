@@ -218,7 +218,7 @@ export const STARTER = `# video-feed configuration
 # high_res = true        # false is cheaper, loses fine on-screen text
 
 [paths]
-# data_dir = "~/.local/share/video-feed"   # %LOCALAPPDATA%\\video-feed\\data on Windows
+# data_dir = "~/.local/share/video-feed"
 `;
 
 /**

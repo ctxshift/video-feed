@@ -67,6 +67,11 @@ irm https://raw.githubusercontent.com/ctxshift/video-feed/main/scripts/install.p
 It installs to `%LOCALAPPDATA%\Programs\vid` and adds that to your user `PATH`,
 because Windows has no equivalent of `~/.local/bin` that is already on it.
 
+Piping a script into an interpreter is a blocked pattern for coding agents, so
+if one is doing the install, have it download the file and run it separately —
+`curl -fsSL … -o install.sh && sh install.sh`, or `irm … -OutFile install.ps1`
+then `./install.ps1`.
+
 `VID_INSTALL_DIR` changes the destination and `VID_VERSION` pins a tag, in both.
 Builds are published for linux-x64, linux-arm64, darwin-x64, darwin-arm64 and
 windows-x64; on arm64 Windows the x64 build runs under emulation.
@@ -228,12 +233,15 @@ skills/         agent skills: video-feed, video-feed-setup
 AGENTS.md       always-on rules, and @includes of the skills
 ```
 
-Where files land:
+Where files land — the same three directories on every platform, Windows
+included:
 
-| | POSIX | Windows |
-|---|---|---|
-| settings | `~/.config/video-feed/` | `%APPDATA%\video-feed\` |
-| work dirs | `~/.local/share/video-feed/` | `%LOCALAPPDATA%\video-feed\data\` |
-| sidecar cache | `~/.cache/video-feed/` | `%LOCALAPPDATA%\video-feed\cache\` |
+| | |
+|---|---|
+| settings | `~/.config/video-feed/config.toml` |
+| work dirs | `~/.local/share/video-feed/<video>/` |
+| sidecar cache | `~/.cache/video-feed/` |
 
-`XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_CACHE_HOME` override all six.
+`XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_CACHE_HOME` override them. One
+layout rather than each platform's convention, so there is a single place to
+look and nothing to migrate between versions.
